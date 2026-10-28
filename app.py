@@ -3,19 +3,21 @@
 # 노트북(seoul_bike_project.ipynb)과 같은 전처리·같은 XGBoost 설정을 사용합니다.
 
 import os
+import joblib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from xgboost import XGBRegressor
 
 RANDOM_STATE = 42
 
 # app.py가 있는 폴더 기준으로 경로를 잡아야 클라우드에서도 파일을 찾을 수 있음
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, 'dataset', 'SeoulBikeData.csv')
+# 노트북 4-7에서 joblib으로 저장한 XGBoost 모델
+MODEL_PATH = os.path.join(BASE_DIR, 'model', 'xgb_model.pkl')
 
 FEATURES = ['temperature', 'humidity', 'wind_speed', 'visibility',
             'dew_point_temperature', 'solar_radiation', 'rainfall', 'snowfall',
@@ -59,15 +61,15 @@ def load_data():
     return data
 
 
-# @st.cache_resource: 모델 학습은 처음 한 번만 하고 계속 재사용
+# @st.cache_resource: 모델 파일은 처음 한 번만 불러오고 계속 재사용
+# 앱에서는 학습하지 않고 불러오기만 함 → 빠르게 뜨고 서버 CPU도 적게 씀
 @st.cache_resource
-def train_model():
-    data = load_data()
-    train_df, test_df = train_test_split(data, test_size=0.2, random_state=RANDOM_STATE)
-    model = XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6,
-                         random_state=RANDOM_STATE, n_jobs=-1)
-    model.fit(train_df[FEATURES], train_df['rented_bike_count'])
+def load_model():
+    model = joblib.load(MODEL_PATH)
 
+    # 노트북 4단계와 같은 방식으로 나눈 테스트 데이터로 성능을 다시 계산해 표시
+    data = load_data()
+    _, test_df = train_test_split(data, test_size=0.2, random_state=RANDOM_STATE)
     pred = model.predict(test_df[FEATURES])
     y_test = test_df['rented_bike_count']
     scores = {
@@ -112,12 +114,13 @@ st.set_page_config(page_title='서울 공공자전거 대여량 예측', layout=
 st.title('서울 공공자전거 시간별 대여량 예측')
 st.caption('데이터: 서울 공공자전거(Seoul Bike Sharing System) 데이터, 2017-12-01 ~ 2018-11-30 / 모델: XGBoost')
 
-if not os.path.exists(DATA_PATH):
-    st.error(f'데이터 파일이 없습니다: {DATA_PATH}')
-    st.stop()
+for path in [DATA_PATH, MODEL_PATH]:
+    if not os.path.exists(path):
+        st.error(f'파일이 없습니다: {path}')
+        st.stop()
 
 data = load_data()
-model, scores = train_model()
+model, scores = load_model()
 
 # 모델 성능 (노트북 4단계 무작위 분할과 같은 방식으로 계산한 테스트 결과)
 c1, c2, c3 = st.columns(3)
